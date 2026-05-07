@@ -1,8 +1,8 @@
+from fastapi import FastAPI, UploadFile, File
 import os
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-from fastapi import FastAPI, UploadFile, File
 from supabase import create_client
 import stripe
 import uuid
@@ -40,14 +40,18 @@ def signup(email: str, password: str):
 # ===============================
 # UPLOAD FLOOR PLAN
 # ===============================
+from fastapi import UploadFile, File, HTTPException
+
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
     try:
+        if not file:
+            raise HTTPException(status_code=400, detail="No file uploaded")
+
         contents = await file.read()
 
         filename = file.filename or "upload.pdf"
 
-        # Try Supabase upload (but never crash if it fails)
         try:
             if supabase:
                 supabase.storage.from_("plans").upload(
@@ -61,26 +65,11 @@ async def upload(file: UploadFile = File(...)):
         return {
             "status": "success",
             "filename": filename,
-            "message": "File received successfully",
-            "cabinets": [
-                {"type": "Base Cabinet", "width": 36},
-                {"type": "Sink Cabinet", "width": 30},
-                {"type": "Wall Cabinet", "width": 36}
-            ],
-            "cutlist": [
-                "2x 36in base cabinets",
-                "1x 30in sink cabinet",
-                "2x 36in wall cabinets"
-            ]
+            "message": "File received successfully"
         }
 
     except Exception as e:
-        return {
-            "status": "error",
-            "message": str(e)
-        }
-
-
+        raise HTTPException(status_code=500, detail=str(e))
 # ===============================
 # STRIPE SUBSCRIPTION
 # ===============================
