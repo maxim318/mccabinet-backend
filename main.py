@@ -45,7 +45,14 @@ async def upload(file: UploadFile = File(...)):
     filename = f"{uuid.uuid4()}.pdf"
     contents = await file.read()
 
-    supabase.storage.from_("plans").upload(filename, contents)
+    try:
+    supabase.storage.from_("plans").upload(
+        filename,
+        contents,
+        file_options={"content-type": "application/pdf"}
+    )
+except Exception as e:
+    print("Storage upload failed:", e)
 
     # fake AI cabinet layout for MVP
     result = {
