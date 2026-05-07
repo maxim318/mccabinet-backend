@@ -1,3 +1,7 @@
+import os
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 from fastapi import FastAPI, UploadFile, File
 from supabase import create_client
 import stripe
@@ -12,7 +16,14 @@ SUPABASE_KEY = "SUPABASE_KEY"
 STRIPE_KEY = "STRIPE_SECRET_KEY"
 RESEND_KEY = "RESEND_API_KEY"
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase = None
+
+try:
+    from supabase import create_client
+    if SUPABASE_URL and SUPABASE_KEY:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+except Exception as e:
+    print("Supabase not connected yet:", e)
 stripe.api_key = STRIPE_KEY
 resend.api_key = RESEND_KEY
 
