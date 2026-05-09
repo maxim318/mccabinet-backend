@@ -42,33 +42,25 @@ except Exception as e:
 # ===================================
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
-    if not file:
-        raise HTTPException(status_code=400, detail="No file uploaded")
-
-    contents = await file.read()
-    filename = file.filename or "upload.pdf"
-
-   supabase_client = supabase
-
-    if supabase_client is None:
-        return {
-            "status": "received",
-            "filename": filename,
-            "warning": "Supabase not connected yet"
-        }
-
     try:
-        supabase_client.storage.from_("plans").upload(
-            filename,
+        contents = await file.read()
+        supabase_client = supabase
+
+        file_path = f"uploads/{file.filename}"
+
+        supabase_client.storage.from_("uploads").upload(
+            file_path,
             contents,
-            file_options={"content-type": "application/pdf"}
+            {"content-type": file.content_type}
         )
 
         return {
-            "status": "success",
-            "filename": filename,
-            "message": "File uploaded to storage"
+            "status": "uploaded",
+            "filename": file.filename
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "status": "error",
+            "message": str(e)
+        }
