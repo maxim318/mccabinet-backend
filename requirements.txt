@@ -7,3 +7,4 @@ resend
 apscheduler
 pydantic
 pypdf
+openai
