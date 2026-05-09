@@ -105,7 +105,7 @@ return {
     "status": "success",
     "analysis": analysis
 }
-        }
+        
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
