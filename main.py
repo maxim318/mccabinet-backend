@@ -48,7 +48,7 @@ async def upload(file: UploadFile = File(...)):
     contents = await file.read()
     filename = file.filename or "upload.pdf"
 
-    supabase_client = get_supabase()
+   supabase_client = supabase
 
     if supabase_client is None:
         return {
