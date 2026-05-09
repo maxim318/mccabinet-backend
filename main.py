@@ -69,31 +69,30 @@ async def upload(file: UploadFile = File(...)):
     except Exception as e:
         return {
             "status": "error",
-            "message": str(e)
+            "message": str(e)}
+
 @app.post("/analyze-plan")
 async def analyze_plan(path: str = Body(...)):
     try:
-        # 1️⃣ Download file from Supabase Storage
+        # Download file from Supabase
         response = supabase.storage.from_("uploads").download(path)
 
-        # 2️⃣ Save it temporarily so Python can read it
+        # Save temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
             temp_file.write(response)
             temp_file_path = temp_file.name
 
-        # 3️⃣ Read text from PDF
+        # Read PDF text
         reader = PdfReader(temp_file_path)
         text = ""
 
         for page in reader.pages:
             text += page.extract_text() + "\n"
 
-        # 4️⃣ Return extracted text
         return {
             "status": "success",
-            "extracted_text": text[:2000]  # limit so response isn't huge
+            "extracted_text": text[:2000]
         }
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
-        }
