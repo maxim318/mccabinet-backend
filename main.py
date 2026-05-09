@@ -40,13 +40,15 @@ except Exception as e:
 # ===================================
 # FILE UPLOAD (PDF FLOOR PLAN)
 # ===================================
+import uuid
+
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
     try:
         contents = await file.read()
-        filename = file.filename
 
-        file_path = f"uploads/{filename}"
+        unique_name = f"{uuid.uuid4()}_{file.filename}"
+        file_path = f"uploads/{unique_name}"
 
         response = supabase.storage.from_("uploads").upload(
             file_path,
@@ -56,7 +58,7 @@ async def upload(file: UploadFile = File(...)):
 
         return {
             "status": "uploaded",
-            "filename": filename,
+            "filename": unique_name,
             "path": file_path,
             "supabase_response": str(response)
         }
