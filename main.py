@@ -1,34 +1,23 @@
-from openai import OpenAI
 import os
-from pypdf import PdfReader
-from fastapi import Body
+import uuid
 import tempfile
-from fastapi import FastAPI, UploadFile, File, HTTPException
-import os
+from fastapi import FastAPI, UploadFile, File, HTTPException, Body
+from pypdf import PdfReader
+from supabase import create_client
+from openai import OpenAI
 
 app = FastAPI(title="McCabinet API")
 
 # ===================================
-# HEALTH CHECK (ROOT ROUTE)
+# OPENAI CLIENT (NEW)
 # ===================================
-@app.get("/")
-def root():
-    return {"status": "McCabinet API is running"}
-
-# ===================================
-# TEST ROUTE
-# ===================================
-@app.get("/ping")
-def ping():
-    return {"message": "pong"}
+openai_client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY")
+)
 
 # ===================================
 # SAFE SUPABASE CONNECTION (LAZY LOAD)
 # ===================================
-from supabase import create_client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-import os
-
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
