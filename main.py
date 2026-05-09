@@ -44,19 +44,20 @@ except Exception as e:
 async def upload(file: UploadFile = File(...)):
     try:
         contents = await file.read()
-        supabase_client = supabase
+        filename = file.filename
 
-        file_path = f"uploads/{file.filename}"
+        file_path = f"uploads/{filename}"
 
-        supabase_client.storage.from_("uploads").upload(
+        supabase.storage.from_("uploads").upload(
             file_path,
             contents,
-            {"content-type": file.content_type}
+            file_options={"content-type": "application/pdf"}
         )
 
         return {
             "status": "uploaded",
-            "filename": file.filename
+            "filename": filename,
+            "path": file_path
         }
 
     except Exception as e:
