@@ -1,3 +1,6 @@
+from pypdf import PdfReader
+from fastapi import Body
+import tempfile
 from fastapi import FastAPI, UploadFile, File, HTTPException
 import os
 
