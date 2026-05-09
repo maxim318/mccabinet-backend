@@ -64,12 +64,7 @@ async def upload(file: UploadFile = File(...)):
             "message": str(e)}
 
 @app.post("/analyze-plan")
-async def analyze_plan(request: AnalyzeRequest):
-    path = request.path
-from pydantic import BaseModel
-
-class AnalyzeRequest(BaseModel):
-    path: str
+async def analyze_plan(path: str = Body(...)):
     try:
         # Download file from Supabase
         response = supabase.storage.from_("uploads").download(path)
@@ -89,28 +84,18 @@ class AnalyzeRequest(BaseModel):
                 text += page_text + "\n"
 
         # ===================================
-        # SEND TEXT TO OPENAI (THE MAGIC STEP)
+        # SEND TEXT TO OPENAI
         # ===================================
         ai_response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a kitchen and cabinetry expert. Analyze floor plans and describe cabinetry needs clearly."
+                    "content": "You are a kitchen and cabinetry expert. Analyze floor plans and describe cabinetry needs."
                 },
                 {
                     "role": "user",
-                    "content": f"""
-Here is the extracted floor plan text:
-
-{text}
-
-Please describe:
-- Kitchen layout type
-- Cabinet locations
-- Appliance placement
-- Any design suggestions
-"""
+                    "content": f"Here is the extracted floor plan text:\n\n{text}\n\nDescribe layout, cabinets needed, and measurements if possible."
                 }
             ],
             temperature=0.2
