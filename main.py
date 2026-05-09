@@ -20,29 +20,22 @@ def ping():
 # ===================================
 # SAFE SUPABASE CONNECTION (LAZY LOAD)
 # ===================================
-supabase = None
+from supabase import create_client
+import os
 
-def get_supabase():
-    global supabase
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-    if supabase is not None:
-        return supabase
+print("SUPABASE_URL:", SUPABASE_URL)
+print("SUPABASE_KEY exists:", bool(SUPABASE_KEY))
 
-    SUPABASE_URL = os.getenv("SUPABASE_URL")
-    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        print("Supabase env vars missing")
-        return None
-
-    try:
-        from supabase import create_client
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-        print("Supabase connected")
-        return supabase
-    except Exception as e:
-        print("Supabase connection failed:", e)
-        return None
+try:
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    print("Supabase client created successfully")
+except Exception as e:
+    print("Supabase FAILED to initialize:")
+    print(e)
+    supabase = None
 
 # ===================================
 # FILE UPLOAD (PDF FLOOR PLAN)
