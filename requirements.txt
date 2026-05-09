@@ -6,3 +6,4 @@ stripe
 resend
 apscheduler
 pydantic
+pypdf
