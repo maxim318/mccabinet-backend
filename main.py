@@ -1,39 +1,52 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 import os
 
-from supabase import create_client
+app = FastAPI(title="McCabinet API")
 
-app = FastAPI()
-
-# ===============================
-# ENV VARIABLES (Railway)
-# ===============================
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-# ===============================
-# SUPABASE CLIENT
-# ===============================
-supabase = None
-
-if SUPABASE_URL and SUPABASE_KEY:
-    try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    except Exception as e:
-        print("Supabase init error:", e)
-
-
-# ===============================
-# HEALTH CHECK
-# ===============================
+# ===================================
+# HEALTH CHECK (ROOT ROUTE)
+# ===================================
 @app.get("/")
 def root():
-    return {"status": "API running"}
+    return {"status": "McCabinet API is running"}
 
+# ===================================
+# TEST ROUTE
+# ===================================
+@app.get("/ping")
+def ping():
+    return {"message": "pong"}
 
-# ===============================
-# UPLOAD FLOOR PLAN (CORE FEATURE)
-# ===============================
+# ===================================
+# SAFE SUPABASE CONNECTION (LAZY LOAD)
+# ===================================
+supabase = None
+
+def get_supabase():
+    global supabase
+
+    if supabase is not None:
+        return supabase
+
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("Supabase env vars missing")
+        return None
+
+    try:
+        from supabase import create_client
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print("Supabase connected")
+        return supabase
+    except Exception as e:
+        print("Supabase connection failed:", e)
+        return None
+
+# ===================================
+# FILE UPLOAD (PDF FLOOR PLAN)
+# ===================================
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
     if not file:
@@ -42,20 +55,27 @@ async def upload(file: UploadFile = File(...)):
     contents = await file.read()
     filename = file.filename or "upload.pdf"
 
-    if not supabase:
-        raise HTTPException(status_code=500, detail="Supabase not configured")
+    supabase_client = get_supabase()
+
+    if supabase_client is None:
+        return {
+            "status": "received",
+            "filename": filename,
+            "warning": "Supabase not connected yet"
+        }
 
     try:
-        supabase.storage.from_("plans").upload(
+        supabase_client.storage.from_("plans").upload(
             filename,
             contents,
             file_options={"content-type": "application/pdf"}
         )
-    except Exception as e:
-        print("Storage error:", e)
-        raise HTTPException(status_code=500, detail="Upload failed")
 
-    return {
-        "status": "success",
-        "filename": filename
-    }
+        return {
+            "status": "success",
+            "filename": filename,
+            "message": "File uploaded to storage"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
