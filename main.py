@@ -48,16 +48,21 @@ async def upload(file: UploadFile = File(...)):
 
         file_path = f"uploads/{filename}"
 
-        supabase.storage.from_("uploads").upload(
+        # Convert to proper bytes upload format
+        response = supabase.storage.from_("uploads").upload(
             file_path,
             contents,
-            file_options={"content-type": "application/pdf"}
+            file_options={
+                "content-type": file.content_type or "application/pdf",
+                "upsert": "true"
+            }
         )
 
         return {
             "status": "uploaded",
             "filename": filename,
-            "path": file_path
+            "path": file_path,
+            "supabase_response": str(response)
         }
 
     except Exception as e:
