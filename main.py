@@ -81,9 +81,30 @@ async def analyze_plan(path: str = Body(...)):
         for page in reader.pages:
             text += page.extract_text() + "\n"
 
-        return {
-            "status": "success",
-            "extracted_text": text[:2000]
+      # ===================================
+# SEND TEXT TO OPENAI (THE MAGIC STEP)
+# ===================================
+ai_response = openai_client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[
+        {
+            "role": "system",
+            "content": "You are a kitchen and cabinetry expert. Analyze floor plans and describe cabinetry needs."
+        },
+        {
+            "role": "user",
+            "content": f"Here is the extracted floor plan text:\n\n{text}\n\nDescribe the kitchen layout, cabinets needed, and measurements if possible."
+        }
+    ],
+    temperature=0.2
+)
+
+analysis = ai_response.choices[0].message.content
+
+return {
+    "status": "success",
+    "analysis": analysis
+}
         }
 
     except Exception as e:
