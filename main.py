@@ -79,33 +79,47 @@ async def analyze_plan(path: str = Body(...)):
         text = ""
 
         for page in reader.pages:
-            text += page.extract_text() + "\n"
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
 
-      # ===================================
-# SEND TEXT TO OPENAI (THE MAGIC STEP)
-# ===================================
-ai_response = openai_client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[
-        {
-            "role": "system",
-            "content": "You are a kitchen and cabinetry expert. Analyze floor plans and describe cabinetry needs."
-        },
-        {
-            "role": "user",
-            "content": f"Here is the extracted floor plan text:\n\n{text}\n\nDescribe the kitchen layout, cabinets needed, and measurements if possible."
+        # ===================================
+        # SEND TEXT TO OPENAI (THE MAGIC STEP)
+        # ===================================
+        ai_response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a kitchen and cabinetry expert. Analyze floor plans and describe cabinetry needs clearly."
+                },
+                {
+                    "role": "user",
+                    "content": f"""
+Here is the extracted floor plan text:
+
+{text}
+
+Please describe:
+- Kitchen layout type
+- Cabinet locations
+- Appliance placement
+- Any design suggestions
+"""
+                }
+            ],
+            temperature=0.2
+        )
+
+        analysis = ai_response.choices[0].message.content
+
+        return {
+            "status": "success",
+            "analysis": analysis
         }
-    ],
-    temperature=0.2
-)
-
-analysis = ai_response.choices[0].message.content
-
-return {
-    "status": "success",
-    "analysis": analysis
-}
-        
 
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return {
+            "status": "error",
+            "message": str(e)
+        }
