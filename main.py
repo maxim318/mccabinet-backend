@@ -46,7 +46,7 @@ async def upload(file: UploadFile = File(...)):
         contents = await file.read()
         filename = file.filename
 
-        file_path = filename
+        file_path = f"uploads/{filename}"
 
         response = supabase.storage.from_("uploads").upload(
             file_path,
