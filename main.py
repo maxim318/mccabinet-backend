@@ -46,16 +46,12 @@ async def upload(file: UploadFile = File(...)):
         contents = await file.read()
         filename = file.filename
 
-       file_path = filename
+        file_path = filename
 
-        # Convert to proper bytes upload format
         response = supabase.storage.from_("uploads").upload(
             file_path,
             contents,
-            file_options={
-                "content-type": file.content_type or "application/pdf",
-                "upsert": "true"
-            }
+            file_options={"content-type": file.content_type}
         )
 
         return {
