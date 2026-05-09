@@ -1,3 +1,5 @@
+from openai import OpenAI
+import os
 from pypdf import PdfReader
 from fastapi import Body
 import tempfile
@@ -24,6 +26,7 @@ def ping():
 # SAFE SUPABASE CONNECTION (LAZY LOAD)
 # ===================================
 from supabase import create_client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 import os
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
