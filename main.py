@@ -90,10 +90,30 @@ async def analyze_plan(path: str = Body(...)):
             model="gpt-4o-mini",
             messages=[
                 {
-                    "role": "system",
-                    "content": "You are a kitchen and cabinetry expert. Analyze floor plans and describe cabinetry needs."
-                },
-                {
+    "role": "system",
+    "content": """
+You are a kitchen design AI.
+
+You MUST return ONLY valid JSON. No explanation text.
+
+Your output format must be:
+
+{
+  "layout_type": "",
+  "base_cabinets": number,
+  "wall_cabinets": number,
+  "specialty_cabinets": [],
+  "estimated_linear_feet": number,
+  "assumptions": []
+}
+
+Rules:
+- Always estimate cabinets based on the floor plan text.
+- If unsure, make a reasonable professional estimate.
+- Do NOT include paragraphs or explanations.
+- Output ONLY JSON.
+"""
+}
                     "role": "user",
                     "content": f"Here is the extracted floor plan text:\n\n{text}\n\nDescribe layout, cabinets needed, and measurements if possible."
                 }
