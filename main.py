@@ -88,10 +88,10 @@ async def analyze_plan(path: str = Body(...)):
         # ===================================
         ai_response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {
-    "role": "system",
-    "content": """
+messages=[
+    {
+        "role": "system",
+        "content": """
 You are a kitchen design AI.
 
 You MUST return ONLY valid JSON. No explanation text.
@@ -113,11 +113,18 @@ Rules:
 - Do NOT include paragraphs or explanations.
 - Output ONLY JSON.
 """
-}
-                    "role": "user",
-                    "content": f"Here is the extracted floor plan text:\n\n{text}\n\nDescribe layout, cabinets needed, and measurements if possible."
-                }
-            ],
+    },
+    {
+        "role": "user",
+        "content": f"""
+Here is the extracted floor plan text:
+
+{text}
+
+Return ONLY the JSON object with cabinet estimation.
+"""
+    }
+],
             temperature=0.2
         )
 
