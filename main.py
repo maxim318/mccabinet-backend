@@ -90,31 +90,38 @@ async def analyze_plan(path: str = Body(...)):
         ai_response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
 messages=[
-    {
-        "role": "system",
-        "content": """
-You are a kitchen design AI.
-
-You MUST return ONLY valid JSON. No explanation text.
-
-Your output format must be:
-
 {
-  "layout_type": "",
-  "base_cabinets": number,
-  "wall_cabinets": number,
-  "specialty_cabinets": [],
-  "estimated_linear_feet": number,
-  "assumptions": []
-}
+    "role": "system",
+    "content": """
+You are a professional kitchen CAD layout designer.
 
-Rules:
-- Always estimate cabinets based on the floor plan text.
-- If unsure, make a reasonable professional estimate.
-- Do NOT include paragraphs or explanations.
-- Output ONLY JSON.
+You convert floor plan text into structured cabinet layout designs.
+
+You must follow these rules:
+
+1. You MUST identify:
+   - walls (length estimates allowed if unclear)
+   - appliances (sink, fridge, stove, dishwasher)
+   - doors and windows (treat as blocked zones)
+
+2. You MUST design using ONLY standard cabinet widths:
+   - 9, 12, 15, 18, 21, 24, 27, 30, 33, 36 inches
+
+3. You MUST build logical cabinet runs along each wall:
+   - base cabinets go on floor
+   - wall cabinets go above where possible
+   - leave clearance for appliances and doors
+
+4. You MUST detect:
+   - corner cabinets where walls meet
+   - appliance gaps
+   - unknown measurements
+
+5. You MUST output ONLY valid JSON.
+
+NO explanations. NO markdown. NO text outside JSON.
 """
-    },
+}
     {
         "role": "user",
         "content": f"""
