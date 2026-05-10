@@ -136,14 +136,61 @@ OUTPUT RULE
 
 Return ONLY valid JSON.
 
-No explanations.
-No markdown.
-No extra text.
+========================
+STRICT OUTPUT SCHEMA
+========================
 
-JSON must represent:
-- wall-by-wall cabinet layout
-- appliance placements
-- assumptions
+Your JSON MUST follow this structure exactly:
+
+{
+  "kitchen_type": "string (galley, L-shape, U-shape, etc)",
+  "walls": [
+    {
+      "id": "Wall A",
+      "length_inches": number,
+      "description": "what this wall represents",
+      "cabinets": [
+        {
+          "type": "base | wall | tall | filler | corner",
+          "width": number,
+          "position_note": "where it sits on wall",
+          "adjacent_to_appliance": false
+        }
+      ]
+    }
+  ],
+  "appliances": [
+    {
+      "type": "sink | stove | fridge | dishwasher | unknown",
+      "estimated_width": number,
+      "wall_id": "Wall A"
+    }
+  ],
+  "corners": [
+    {
+      "between_walls": ["Wall A", "Wall B"],
+      "cabinet_type": "corner"
+    }
+  ],
+  "assumptions": [
+    "any missing measurements you had to assume"
+  ]
+}
+
+========================
+RULES
+========================
+
+- MUST build wall-by-wall layout
+- MUST place appliances FIRST, then fit cabinets around them
+- MUST ONLY use cabinet widths:
+  9, 12, 15, 18, 21, 24, 27, 30, 33, 36
+- MUST NOT overlap cabinets or appliances
+- MUST leave clearance where doors/windows exist
+- MUST be realistic (like an actual installer would build)
+
+NO text outside JSON.
+NO explanations.
 """
     },
     {
