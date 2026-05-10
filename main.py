@@ -63,62 +63,56 @@ async def upload(file: UploadFile = File(...)):
 @app.post("/analyze-plan")
 async def analyze_plan(path: str = Body(...)):
     try:
-        # 1️⃣ Download PDF from Supabase
         pdf_bytes = supabase.storage.from_("uploads").download(path)
 
-        # 2️⃣ Save temp PDF
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
             temp_pdf.write(pdf_bytes)
             temp_pdf_path = temp_pdf.name
 
-        # 3️⃣ Convert PDF → images
-        try:
-            pages = convert_from_path(temp_pdf_path, dpi=150, timeout=10)
-except Exception as e:
-    return {"status": "error", "message": f"PDF conversion failed: {str(e)}"}
+        pages = convert_from_path(temp_pdf_path, dpi=150, timeout=15)
 
-if not pages:
-    return {"status": "error", "message": "No pages found in PDF"}
+        if not pages:
+            return {"status": "error", "message": "No pages found in PDF"}
 
-image_path = "/tmp/page.png"
-pages[0].save(image_path, "PNG")
+        image_path = "/tmp/page.png"
+        pages[0].save(image_path, "PNG")
 
-print("IMAGE CREATED:", image_path)
+        print("IMAGE CREATED:", image_path)
 
         base64_image = encode_image(image_path)
 
-        # 4️⃣ Send to OpenAI Vision
         ai_response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             temperature=0.2,
             messages=[
                 {
                     "role": "system",
-                    "content": """
-You are a professional kitchen CAD layout engine.
-
-Return ONLY valid JSON using cabinet widths:
-9,12,15,18,21,24,27,30,33,36
-
-Build REALISTIC wall-by-wall kitchen cabinet layouts.
-"""
+                    "content": "You are a kitchen CAD layout engine. Return ONLY valid JSON."
                 },
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Analyze this floor plan and create cabinet layout."},
+                        {"type": "text", "text": "Analyze this floor plan."},
                         {
                             "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                            "image_url": {
+                                "url": f"data:image/png;base64,{base64_image}"
+                            }
                         }
-                    ],
-                },
-            ],
+                    ]
+                }
+            ]
         )
 
         analysis = json.loads(ai_response.choices[0].message.content)
 
-        return {"status": "success", "analysis": analysis}
+        return {
+            "status": "success",
+            "analysis": analysis
+        }
 
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return {
+            "status": "error",
+            "message": str(e)
+        }
