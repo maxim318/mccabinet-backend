@@ -90,9 +90,9 @@ async def analyze_plan(path: str = Body(...)):
         ai_response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
 messages=[
-{
-    "role": "system",
-    "content": """
+    {
+        "role": "system",
+        "content": """
 You are a professional kitchen CAD layout designer.
 
 You convert floor plan text into structured cabinet layout designs.
@@ -121,7 +121,7 @@ You must follow these rules:
 
 NO explanations. NO markdown. NO text outside JSON.
 """
-}
+    },
     {
         "role": "user",
         "content": f"""
