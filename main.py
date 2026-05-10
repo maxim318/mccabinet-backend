@@ -3,11 +3,21 @@ import os
 import uuid
 import tempfile
 from fastapi import FastAPI, UploadFile, File, HTTPException, Body
+from fastapi.middleware.cors import CORSMiddleware
 from pypdf import PdfReader
 from supabase import create_client
 from openai import OpenAI
 
 app = FastAPI(title="McCabinet API")
+
+# Allow frontend to talk to backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # allow all for now (we'll lock later)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ===================================
 # OPENAI CLIENT (NEW)
