@@ -70,49 +70,41 @@ class AnalyzeRequest(BaseModel):
 async def analyze_plan(request: AnalyzeRequest):
     try:
         path = request.path
-    try:
-        pdf_bytes = supabase.storage.from_("uploads").download(path)
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
-            temp_pdf.write(pdf_bytes)
-            temp_pdf_path = temp_pdf.name
+        # Download file from Supabase
+        response = supabase.storage.from_("uploads").download(path)
 
-        pages = convert_from_path(temp_pdf_path, dpi=150, timeout=15)
+        # Save temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(response)
+            temp_file_path = temp_file.name
 
-        if not pages:
-            return {"status": "error", "message": "No pages found in PDF"}
+        # Read PDF text
+        reader = PdfReader(temp_file_path)
+        text = ""
 
-        image_path = "/tmp/page.png"
-        pages[0].save(image_path, "PNG")
-
-        print("IMAGE CREATED:", image_path)
-
-        base64_image = encode_image(image_path)
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
 
         ai_response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
-            temperature=0.2,
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a kitchen CAD layout engine. Return ONLY valid JSON."
+                    "content": "You are a kitchen layout AI. Return ONLY JSON."
                 },
                 {
                     "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Analyze this floor plan."},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{base64_image}"
-                            }
-                        }
-                    ]
+                    "content": text
                 }
-            ]
+            ],
+            temperature=0.2
         )
 
-        analysis = json.loads(ai_response.choices[0].message.content)
+        analysis_text = ai_response.choices[0].message.content
+        analysis = json.loads(analysis_text)
 
         return {
             "status": "success",
