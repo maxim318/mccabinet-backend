@@ -72,11 +72,18 @@ async def analyze_plan(path: str = Body(...)):
             temp_pdf_path = temp_pdf.name
 
         # 3️⃣ Convert PDF → images
-        pages = convert_from_path(temp_pdf_path, dpi=200)
+        try:
+            pages = convert_from_path(temp_pdf_path, dpi=150, timeout=10)
+except Exception as e:
+    return {"status": "error", "message": f"PDF conversion failed: {str(e)}"}
 
-        # Save first page as PNG
-        image_path = "/tmp/page.png"
-        pages[0].save(image_path, "PNG")
+if not pages:
+    return {"status": "error", "message": "No pages found in PDF"}
+
+image_path = "/tmp/page.png"
+pages[0].save(image_path, "PNG")
+
+print("IMAGE CREATED:", image_path)
 
         base64_image = encode_image(image_path)
 
