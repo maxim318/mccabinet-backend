@@ -8,3 +8,5 @@ apscheduler
 pydantic
 pypdf
 openai
+pdf2image
+pillow
