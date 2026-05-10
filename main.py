@@ -1,3 +1,9 @@
+from pdf2image import convert_from_path
+import base64
+
+def encode_image(image_path):
+    with open(image_path, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")
 import json
 import os
 import uuid
@@ -85,12 +91,14 @@ async def analyze_plan(path: str = Body(...)):
             temp_file.write(response)
             temp_file_path = temp_file.name
 
-        # Read PDF text
-        reader = PdfReader(temp_file_path)
-        text = ""
+       # Convert PDF pages to images
+       pages = convert_from_path(temp_file_path, dpi=200)
 
-        for page in reader.pages:
-            page_text = page.extract_text()
+       image_paths = []
+       for i, page in enumerate(pages):
+           img_path = f"/tmp/page_{i}.png"
+           page.save(img_path, "PNG")
+           image_paths.append(img_path)
             if page_text:
                 text += page_text + "\n"
 
@@ -204,14 +212,16 @@ NO explanations.
 """
     },
     {
-        "role": "user",
-        "content": f"""
-Here is the extracted floor plan text:
-
-{text}
-
-Return ONLY the JSON object with cabinet estimation.
-"""
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "Analyze this kitchen floor plan and create cabinet layout."},
+        {
+          "type": "image_url",
+          "image_url": {
+            "url": f"data:image/png;base64,{encode_image(image_paths[0])}"
+          }
+        }
+      ]
     }
 ],
             temperature=0.2
