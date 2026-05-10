@@ -129,7 +129,8 @@ Return ONLY the JSON object with cabinet estimation.
             temperature=0.2
         )
 
-        analysis = ai_response.choices[0].message.content
+        analysis_text = ai_response.choices[0].message.content
+        analysis = json.loads(analysis_text)
 
         return {
             "status": "success",
