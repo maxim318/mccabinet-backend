@@ -95,31 +95,27 @@ async def analyze_plan(request: AnalyzeRequest):
             page.save(img_path, "PNG")
             image_paths.append(img_path)
 
-        ai_response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
+response = openai_client.responses.create(
+    model="gpt-4o-mini",
+    response_format={"type": "json_object"},
+    input=[
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": "Analyze this kitchen floorplan and return cabinet layout JSON."},
                 {
-                    "role": "system",
-                    "content": "Return only JSON kitchen layout."
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Analyze this plan"},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{encode_image(image_paths[0])}"
-                            }
-                        }
-                    ]
+                    "type": "input_image",
+                    "image_base64": encode_image(image_paths[0])
                 }
-            ],
-            temperature=0.2
-        )
+            ]
+        }
+    ],
+    temperature=0.2
+)
 
-        analysis = json.loads(ai_response.choices[0].message.content)
+print("AI RAW OUTPUT:", response.output_text)
 
+analysis = json.loads(response.output_text)
         return {
             "status": "success",
             "analysis": analysis
