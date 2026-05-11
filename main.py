@@ -61,44 +61,41 @@ async def upload(file: UploadFile = File(...)):
 # =========================
 # ANALYZE PLAN (FULL AI PIPELINE)
 # =========================
-@app.post("/analyze-plan")
-from pydantic import BaseModel
-
 class AnalyzeRequest(BaseModel):
     path: str
 
+
+@app.post("/analyze-plan")
+async def analyze_plan(request: AnalyzeRequest):
     try:
-        # Download file from Supabase
+        path = request.path
+
         response = supabase.storage.from_("uploads").download(path)
 
-        # Save temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
             temp_file.write(response)
             temp_file_path = temp_file.name
 
-        # Convert PDF → images
         pages = convert_from_path(temp_file_path, dpi=200)
 
         image_paths = []
-        text = ""
 
         for i, page in enumerate(pages):
             img_path = f"/tmp/page_{i}.png"
             page.save(img_path, "PNG")
             image_paths.append(img_path)
 
-        # Call OpenAI
         ai_response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a kitchen CAD layout engine. Return ONLY valid JSON."
+                    "content": "Return only JSON kitchen layout."
                 },
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Analyze this kitchen floor plan."},
+                        {"type": "text", "text": "Analyze this plan"},
                         {
                             "type": "image_url",
                             "image_url": {
@@ -111,8 +108,7 @@ class AnalyzeRequest(BaseModel):
             temperature=0.2
         )
 
-        analysis_text = ai_response.choices[0].message.content
-        analysis = json.loads(analysis_text)
+        analysis = json.loads(ai_response.choices[0].message.content)
 
         return {
             "status": "success",
