@@ -68,52 +68,53 @@ class AnalyzeRequest(BaseModel):
 
 
 @app.post("/analyze-plan")
-async def analyze_plan(request: AnalyzeRequest):
+async def analyze_plan(path: str = Body(...)):
     try:
-        path = request.path
-
         # Download file from Supabase
         response = supabase.storage.from_("uploads").download(path)
 
-        # Save temporarily
+        # Save temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
             temp_file.write(response)
             temp_file_path = temp_file.name
 
-        # Read PDF text
-        reader = PdfReader(temp_file_path)
+        # Convert PDF → images
+        pages = convert_from_path(temp_file_path, dpi=200)
+
+        image_paths = []
         text = ""
 
-        for page in reader.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n"
+        for i, page in enumerate(pages):
+            img_path = f"/tmp/page_{i}.png"
+            page.save(img_path, "PNG")
+            image_paths.append(img_path)
 
+        # Call OpenAI
         ai_response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a kitchen layout AI. Return ONLY JSON."
+                    "content": "You are a kitchen CAD layout engine. Return ONLY valid JSON."
                 },
                 {
                     "role": "user",
-                    "content": text
+                    "content": [
+                        {"type": "text", "text": "Analyze this kitchen floor plan."},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{encode_image(image_paths[0])}"
+                            }
+                        }
+                    ]
                 }
             ],
             temperature=0.2
         )
 
         analysis_text = ai_response.choices[0].message.content
-        print("RAW OPENAI OUTPUT:", analysis_text)
-       try:
-           analysis = json.loads(analysis_text)
-except Exception:
-           return {
-               "status": "error",
-               "message": "OpenAI did not return valid JSON",
-               "raw_output": analysis_text
-    }
+        analysis = json.loads(analysis_text)
 
         return {
             "status": "success",
