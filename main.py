@@ -1,4 +1,3 @@
-from pypdf import PdfReader
 from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,7 +15,6 @@ print("OPENAI VERSION:", openai.__version__)
 
 app = FastAPI(title="McCabinet API")
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,47 +23,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# OpenAI
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Supabase
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    print("⚠️ Missing Supabase environment variables")
+    print("Missing Supabase environment variables")
     supabase = None
 else:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Image encoder
+
 def encode_image(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
 
-# Upload endpoint
+
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
-    contents = await file.read()
-    if supabase is None:
-        return {"status": "error", "message": "Supabase not configured"}
+    try:
+        if supabase is None:
+            return {"status": "error", "message": "Supabase not configured"}
 
-    unique_name = f"{uuid.uuid4()}_{file.filename}"
-    file_path = f"uploads/{unique_name}"
+        contents = await file.read()
+        unique_name = f"{uuid.uuid4()}_{file.filename}"
+        file_path = f"uploads/{unique_name}"
 
-    supabase.storage.from_("uploads").upload(
-        file_path,
-        contents,
-        file_options={"content-type": file.content_type},
-    )
+        supabase.storage.from_("uploads").upload(
+            file_path,
+            contents,
+            file_options={"content-type": file.content_type},
+        )
 
-    return {"status": "uploaded", "path": file_path}
+        return {"status": "uploaded", "path": file_path}
 
-# Request model
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 class AnalyzeRequest(BaseModel):
     path: str
 
-# Analyze endpoint
+
 @app.post("/analyze-plan")
 async def analyze_plan(request: AnalyzeRequest):
     try:
@@ -74,39 +74,40 @@ async def analyze_plan(request: AnalyzeRequest):
         if supabase is None:
             return {"status": "error", "message": "Supabase not configured"}
 
-        # Download PDF
         path = request.path
         print("Downloading file from Supabase:", path)
+
         pdf_bytes = supabase.storage.from_("uploads").download(path)
 
-        # Save temp PDF
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
             temp_file.write(pdf_bytes)
             temp_file_path = temp_file.name
 
         print("PDF saved to temp:", temp_file_path)
 
-        # Convert PDF → images
         pages = convert_from_path(temp_file_path, dpi=200)
-        image_paths = []
 
-        for i, page in enumerate(pages):
-            img_path = f"/tmp/page_{i}.png"
-            page.save(img_path, "PNG")
-            image_paths.append(img_path)
+        if not pages:
+            return {"status": "error", "message": "No PDF pages found"}
 
-        print("PDF converted to images:", image_paths)
+        image_path = "/tmp/page_0.png"
+        pages[0].save(image_path, "PNG")
 
-        # 🧠 NEW OPENAI CALL (SDK v2 compatible)
-        print("Calling OpenAI Vision…")
+        print("PDF converted to image:", image_path)
+        print("Calling OpenAI Vision...")
 
         prompt = """
-You are a kitchen cabinet estimator.
+You are a kitchen cabinet layout assistant.
 
 Analyze this kitchen floorplan image and return ONLY valid JSON.
 
+Do not use markdown.
+Do not wrap the response in ```json.
+Do not include explanations outside JSON.
+
 Return this schema:
 {
+  "kitchen_type": "",
   "walls": [],
   "cabinets": [],
   "appliances": [],
@@ -122,37 +123,36 @@ Return this schema:
                     "content": [
                         {"type": "input_text", "text": prompt},
                         {
-    "type": "input_image",
-    "image_url": f"data:image/png;base64,{encode_image(image_paths[0])}"
-}
-                    ]
+                            "type": "input_image",
+                            "image_url": f"data:image/png;base64,{encode_image(image_path)}",
+                        },
+                    ],
                 }
             ],
             temperature=0.2,
         )
 
-        # 🔥 THIS is the correct way to read output in SDK v2
         ai_text = response.output[0].content[0].text
 
-print("AI RAW OUTPUT:")
-print(ai_text)
+        print("AI RAW OUTPUT:")
+        print(ai_text)
 
-# 🚨 FIX: remove markdown code fences if the model adds them
-clean_text = ai_text.strip()
+        clean_text = ai_text.strip()
 
-if clean_text.startswith("```"):
-    clean_text = clean_text.split("```")[1]  # remove first fence
-    if clean_text.startswith("json"):
-        clean_text = clean_text[4:]  # remove "json" label
+        if clean_text.startswith("```"):
+            clean_text = clean_text.split("```")[1]
+            if clean_text.startswith("json"):
+                clean_text = clean_text[4:]
 
-clean_text = clean_text.strip()
+        clean_text = clean_text.strip()
 
-print("CLEANED JSON:")
-print(clean_text)
+        print("CLEANED JSON:")
+        print(clean_text)
 
-analysis = json.loads(clean_text)
+        analysis = json.loads(clean_text)
 
-return {"status": "success", "analysis": analysis}
+        return {"status": "success", "analysis": analysis}
+
     except Exception as e:
-        print("❌ ERROR IN ANALYZE:", str(e))
+        print("ERROR IN ANALYZE:", str(e))
         return {"status": "error", "message": str(e)}
