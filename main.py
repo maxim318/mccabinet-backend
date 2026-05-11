@@ -105,7 +105,15 @@ async def analyze_plan(request: AnalyzeRequest):
         )
 
         analysis_text = ai_response.choices[0].message.content
-        analysis = json.loads(analysis_text)
+        print("RAW OPENAI OUTPUT:", analysis_text)
+       try:
+           analysis = json.loads(analysis_text)
+except Exception:
+           return {
+               "status": "error",
+               "message": "OpenAI did not return valid JSON",
+               "raw_output": analysis_text
+    }
 
         return {
             "status": "success",
