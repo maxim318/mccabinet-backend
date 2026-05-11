@@ -10,6 +10,8 @@ import json
 import uuid
 import tempfile
 import base64
+import openai
+print("OPENAI VERSION:", openai.__version__)
 
 app = FastAPI(title="McCabinet API")
 
