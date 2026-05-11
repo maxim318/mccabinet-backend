@@ -134,13 +134,25 @@ Return this schema:
         # 🔥 THIS is the correct way to read output in SDK v2
         ai_text = response.output[0].content[0].text
 
-        print("AI RAW OUTPUT:")
-        print(ai_text)
+print("AI RAW OUTPUT:")
+print(ai_text)
 
-        analysis = json.loads(ai_text)
+# 🚨 FIX: remove markdown code fences if the model adds them
+clean_text = ai_text.strip()
 
-        return {"status": "success", "analysis": analysis}
+if clean_text.startswith("```"):
+    clean_text = clean_text.split("```")[1]  # remove first fence
+    if clean_text.startswith("json"):
+        clean_text = clean_text[4:]  # remove "json" label
 
+clean_text = clean_text.strip()
+
+print("CLEANED JSON:")
+print(clean_text)
+
+analysis = json.loads(clean_text)
+
+return {"status": "success", "analysis": analysis}
     except Exception as e:
         print("❌ ERROR IN ANALYZE:", str(e))
         return {"status": "error", "message": str(e)}
