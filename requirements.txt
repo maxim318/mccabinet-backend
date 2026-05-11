@@ -7,6 +7,6 @@ resend
 apscheduler
 pydantic
 pypdf
-openai
+openai>=1.30.0
 pdf2image
 pillow
