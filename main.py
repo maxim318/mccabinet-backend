@@ -122,9 +122,9 @@ Return this schema:
                     "content": [
                         {"type": "input_text", "text": prompt},
                         {
-                            "type": "input_image",
-                            "image_base64": encode_image(image_paths[0])
-                        }
+    "type": "input_image",
+    "image_url": f"data:image/png;base64,{encode_image(image_paths[0])}"
+}
                     ]
                 }
             ],
