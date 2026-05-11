@@ -1,5 +1,6 @@
 from pypdf import PdfReader
 from fastapi import FastAPI, UploadFile, File, Body
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client
 from openai import OpenAI
@@ -15,12 +16,15 @@ app = FastAPI(title="McCabinet API")
 # Allow frontend to talk to backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://localhost:5173",
+        "*"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # =========================
 # OPENAI
 # =========================
@@ -31,8 +35,12 @@ openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # =========================
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("⚠️ Missing Supabase environment variables")
+    supabase = None
+else:
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # =========================
 # IMAGE ENCODER
 # =========================
@@ -46,6 +54,8 @@ def encode_image(path):
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
     contents = await file.read()
+    if supabase is None:
+        return {"status": "error", "message": "Supabase not configured"}
 
     unique_name = f"{uuid.uuid4()}_{file.filename}"
     file_path = f"uploads/{unique_name}"
