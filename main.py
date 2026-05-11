@@ -1,5 +1,5 @@
 from pypdf import PdfReader
-from fastapi import FastAPI, UploadFile, File, Body
+from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client
@@ -11,30 +11,24 @@ import uuid
 import tempfile
 import base64
 import openai
+
 print("OPENAI VERSION:", openai.__version__)
 
 app = FastAPI(title="McCabinet API")
 
-# Allow frontend to talk to backend
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "https://localhost:5173",
-        "*"
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# =========================
-# OPENAI
-# =========================
+
+# OpenAI
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# =========================
-# SUPABASE
-# =========================
+# Supabase
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
@@ -43,16 +37,13 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     supabase = None
 else:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-# =========================
-# IMAGE ENCODER
-# =========================
+
+# Image encoder
 def encode_image(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
 
-# =========================
-# UPLOAD ENDPOINT
-# =========================
+# Upload endpoint
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
     contents = await file.read()
@@ -70,13 +61,11 @@ async def upload(file: UploadFile = File(...)):
 
     return {"status": "uploaded", "path": file_path}
 
-# =========================
-# ANALYZE PLAN (FULL AI PIPELINE)
-# =========================
+# Request model
 class AnalyzeRequest(BaseModel):
     path: str
 
-
+# Analyze endpoint
 @app.post("/analyze-plan")
 async def analyze_plan(request: AnalyzeRequest):
     try:
@@ -85,25 +74,20 @@ async def analyze_plan(request: AnalyzeRequest):
         if supabase is None:
             return {"status": "error", "message": "Supabase not configured"}
 
-        # 1️⃣ Download PDF from Supabase
+        # Download PDF
         path = request.path
         print("Downloading file from Supabase:", path)
-
         pdf_bytes = supabase.storage.from_("uploads").download(path)
 
-        # 2️⃣ Save PDF to temp file
+        # Save temp PDF
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
             temp_file.write(pdf_bytes)
             temp_file_path = temp_file.name
 
         print("PDF saved to temp:", temp_file_path)
 
-        # 3️⃣ Convert PDF → images
+        # Convert PDF → images
         pages = convert_from_path(temp_file_path, dpi=200)
-
-        if len(pages) == 0:
-            return {"status": "error", "message": "PDF conversion failed"}
-
         image_paths = []
 
         for i, page in enumerate(pages):
@@ -113,20 +97,30 @@ async def analyze_plan(request: AnalyzeRequest):
 
         print("PDF converted to images:", image_paths)
 
-        # 4️⃣ Call OpenAI Vision
+        # 🧠 NEW OPENAI CALL (SDK v2 compatible)
         print("Calling OpenAI Vision…")
+
+        prompt = """
+You are a kitchen cabinet estimator.
+
+Analyze this kitchen floorplan image and return ONLY valid JSON.
+
+Return this schema:
+{
+  "walls": [],
+  "cabinets": [],
+  "appliances": [],
+  "notes": ""
+}
+"""
 
         response = openai_client.responses.create(
             model="gpt-4o-mini",
-            response_format={"type": "json_object"},
             input=[
                 {
                     "role": "user",
                     "content": [
-                        {
-                            "type": "input_text",
-                            "text": "Analyze this kitchen floorplan and return cabinet layout JSON."
-                        },
+                        {"type": "input_text", "text": prompt},
                         {
                             "type": "input_image",
                             "image_base64": encode_image(image_paths[0])
@@ -134,25 +128,19 @@ async def analyze_plan(request: AnalyzeRequest):
                     ]
                 }
             ],
-            temperature=0.2
+            temperature=0.2,
         )
 
+        # 🔥 THIS is the correct way to read output in SDK v2
+        ai_text = response.output[0].content[0].text
+
         print("AI RAW OUTPUT:")
-        print(response.output_text)
+        print(ai_text)
 
-        # 5️⃣ Parse AI JSON safely
-        analysis = json.loads(response.output_text)
+        analysis = json.loads(ai_text)
 
-        print("JSON PARSED SUCCESSFULLY")
-
-        return {
-            "status": "success",
-            "analysis": analysis
-        }
+        return {"status": "success", "analysis": analysis}
 
     except Exception as e:
         print("❌ ERROR IN ANALYZE:", str(e))
-        return {
-            "status": "error",
-            "message": str(e)
-        }
+        return {"status": "error", "message": str(e)}
