@@ -40,6 +40,116 @@ def encode_image(path):
         return base64.b64encode(f.read()).decode("utf-8")
 
 
+def clean_ai_json(ai_text: str):
+    clean_text = ai_text.strip()
+
+    if clean_text.startswith("```"):
+        parts = clean_text.split("```")
+        if len(parts) >= 2:
+            clean_text = parts[1].strip()
+            if clean_text.startswith("json"):
+                clean_text = clean_text[4:].strip()
+
+    return json.loads(clean_text)
+
+
+def normalize_analysis(analysis: dict):
+    if not isinstance(analysis, dict):
+        return {
+            "kitchen_type": "unknown",
+            "walls": [],
+            "appliances": [],
+            "notes": "AI returned invalid structure"
+        }
+
+    walls = analysis.get("walls", [])
+    appliances = analysis.get("appliances", [])
+    cabinets = analysis.get("cabinets", [])
+
+    normalized_walls = []
+
+    for index, wall in enumerate(walls):
+        if not isinstance(wall, dict):
+            continue
+
+        wall_id = wall.get("id") or wall.get("name") or f"Wall {chr(65 + index)}"
+        length_inches = (
+            wall.get("length_inches")
+            or wall.get("length")
+            or wall.get("width")
+            or 120
+        )
+
+        wall_cabinets = wall.get("cabinets")
+
+        if not isinstance(wall_cabinets, list):
+            wall_cabinets = []
+
+        normalized_walls.append({
+            "id": wall_id,
+            "length_inches": length_inches,
+            "description": wall.get("description", ""),
+            "features": wall.get("features", []),
+            "cabinets": wall_cabinets,
+        })
+
+    if not normalized_walls:
+        normalized_walls = [
+            {
+                "id": "Wall A",
+                "length_inches": 120,
+                "description": "Fallback wall because AI did not detect walls",
+                "features": [],
+                "cabinets": [],
+            }
+        ]
+
+    if cabinets and not any(wall.get("cabinets") for wall in normalized_walls):
+        normalized_walls[0]["cabinets"] = [
+            {
+                "type": cabinet.get("type", "base") if isinstance(cabinet, dict) else "base",
+                "width": (
+                    cabinet.get("width")
+                    or cabinet.get("dimensions", {}).get("width")
+                    or 30
+                ) if isinstance(cabinet, dict) else 30,
+                "position_note": cabinet.get("location", "auto placed") if isinstance(cabinet, dict) else "auto placed",
+                "adjacent_to_appliance": False,
+            }
+            for cabinet in cabinets
+            if isinstance(cabinet, dict)
+        ]
+
+    for wall in normalized_walls:
+        if not wall["cabinets"]:
+            wall["cabinets"] = [
+                {
+                    "type": "base",
+                    "width": 30,
+                    "position_note": "placeholder cabinet - client should confirm layout",
+                    "adjacent_to_appliance": False,
+                }
+            ]
+
+    normalized_appliances = []
+
+    for appliance in appliances:
+        if isinstance(appliance, dict):
+            normalized_appliances.append({
+                "type": appliance.get("type", "unknown"),
+                "estimated_width": appliance.get("estimated_width") or appliance.get("width") or 30,
+                "wall_id": appliance.get("wall_id") or appliance.get("location") or "Wall A",
+            })
+
+    return {
+        "kitchen_type": analysis.get("kitchen_type", "unknown"),
+        "walls": normalized_walls,
+        "appliances": normalized_appliances,
+        "notes": analysis.get("notes", ""),
+        "raw_ai_output": analysis,
+    }
+
+
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
     try:
@@ -105,14 +215,43 @@ Do not use markdown.
 Do not wrap the response in ```json.
 Do not include explanations outside JSON.
 
-Return this schema:
+IMPORTANT:
+Each wall MUST include a cabinets array.
+The frontend requires walls[].cabinets.
+
+Return this exact schema:
 {
   "kitchen_type": "",
-  "walls": [],
-  "cabinets": [],
-  "appliances": [],
+  "walls": [
+    {
+      "id": "Wall A",
+      "length_inches": 120,
+      "description": "",
+      "features": [],
+      "cabinets": [
+        {
+          "type": "base",
+          "width": 30,
+          "position_note": "",
+          "adjacent_to_appliance": false
+        }
+      ]
+    }
+  ],
+  "appliances": [
+    {
+      "type": "sink",
+      "estimated_width": 30,
+      "wall_id": "Wall A"
+    }
+  ],
   "notes": ""
 }
+
+Use only these cabinet widths:
+9, 12, 15, 18, 21, 24, 27, 30, 33, 36.
+
+If dimensions are unclear, make a conservative assumption and explain it in notes.
 """
 
         response = openai_client.responses.create(
@@ -137,19 +276,11 @@ Return this schema:
         print("AI RAW OUTPUT:")
         print(ai_text)
 
-        clean_text = ai_text.strip()
+        analysis_raw = clean_ai_json(ai_text)
+        analysis = normalize_analysis(analysis_raw)
 
-        if clean_text.startswith("```"):
-            clean_text = clean_text.split("```")[1]
-            if clean_text.startswith("json"):
-                clean_text = clean_text[4:]
-
-        clean_text = clean_text.strip()
-
-        print("CLEANED JSON:")
-        print(clean_text)
-
-        analysis = json.loads(clean_text)
+        print("NORMALIZED ANALYSIS:")
+        print(json.dumps(analysis, indent=2))
 
         return {"status": "success", "analysis": analysis}
 
