@@ -1,3 +1,4 @@
+from pypdf import PdfReader
 from fastapi import FastAPI, UploadFile, File, Body
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client
