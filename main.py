@@ -61,14 +61,12 @@ async def upload(file: UploadFile = File(...)):
 # =========================
 # ANALYZE PLAN (FULL AI PIPELINE)
 # =========================
+@app.post("/analyze-plan")
 from pydantic import BaseModel
 
 class AnalyzeRequest(BaseModel):
     path: str
 
-
-@app.post("/analyze-plan")
-async def analyze_plan(path: str = Body(...)):
     try:
         # Download file from Supabase
         response = supabase.storage.from_("uploads").download(path)
