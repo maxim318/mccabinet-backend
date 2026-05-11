@@ -78,15 +78,29 @@ class AnalyzeRequest(BaseModel):
 @app.post("/analyze-plan")
 async def analyze_plan(request: AnalyzeRequest):
     try:
+        print("STEP 1 — analyze-plan called")
+
+        if supabase is None:
+            return {"status": "error", "message": "Supabase not configured"}
+
+        # 1️⃣ Download PDF from Supabase
         path = request.path
+        print("Downloading file from Supabase:", path)
 
-        response = supabase.storage.from_("uploads").download(path)
+        pdf_bytes = supabase.storage.from_("uploads").download(path)
 
+        # 2️⃣ Save PDF to temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
-            temp_file.write(response)
+            temp_file.write(pdf_bytes)
             temp_file_path = temp_file.name
 
+        print("PDF saved to temp:", temp_file_path)
+
+        # 3️⃣ Convert PDF → images
         pages = convert_from_path(temp_file_path, dpi=200)
+
+        if len(pages) == 0:
+            return {"status": "error", "message": "PDF conversion failed"}
 
         image_paths = []
 
@@ -95,33 +109,47 @@ async def analyze_plan(request: AnalyzeRequest):
             page.save(img_path, "PNG")
             image_paths.append(img_path)
 
-response = openai_client.responses.create(
-    model="gpt-4o-mini",
-    response_format={"type": "json_object"},
-    input=[
-        {
-            "role": "user",
-            "content": [
-                {"type": "input_text", "text": "Analyze this kitchen floorplan and return cabinet layout JSON."},
+        print("PDF converted to images:", image_paths)
+
+        # 4️⃣ Call OpenAI Vision
+        print("Calling OpenAI Vision…")
+
+        response = openai_client.responses.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            input=[
                 {
-                    "type": "input_image",
-                    "image_base64": encode_image(image_paths[0])
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": "Analyze this kitchen floorplan and return cabinet layout JSON."
+                        },
+                        {
+                            "type": "input_image",
+                            "image_base64": encode_image(image_paths[0])
+                        }
+                    ]
                 }
-            ]
-        }
-    ],
-    temperature=0.2
-)
+            ],
+            temperature=0.2
+        )
 
-print("AI RAW OUTPUT:", response.output_text)
+        print("AI RAW OUTPUT:")
+        print(response.output_text)
 
-analysis = json.loads(response.output_text)
+        # 5️⃣ Parse AI JSON safely
+        analysis = json.loads(response.output_text)
+
+        print("JSON PARSED SUCCESSFULLY")
+
         return {
             "status": "success",
             "analysis": analysis
         }
 
     except Exception as e:
+        print("❌ ERROR IN ANALYZE:", str(e))
         return {
             "status": "error",
             "message": str(e)
