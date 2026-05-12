@@ -200,16 +200,21 @@ async def analyze_plan(request: AnalyzeRequest):
         if not pages:
             return {"status": "error", "message": "No PDF pages found"}
 
-        image_path = "/tmp/page_0.png"
-        pages[0].save(image_path, "PNG")
+        image_paths = []
 
-        print("PDF converted to image:", image_path)
+        for i, page in enumerate(pages[:4]):
+            image_path = f"/tmp/page_{i}.png"
+            page.save(image_path, "PNG")
+            image_paths.append(image_path)
+
+        print("PDF pages sent to AI:", image_paths)
         print("Calling OpenAI Vision...")
 
         prompt = """
 You are a kitchen cabinet layout assistant.
 
-Analyze this kitchen floorplan image and return ONLY valid JSON.
+Analyze these PDF pages and identify the page that most likely contains the kitchen/floor plan.
+Then return ONLY valid JSON.
 
 Do not use markdown.
 Do not wrap the response in ```json.
@@ -222,6 +227,7 @@ The frontend requires walls[].cabinets.
 Return this exact schema:
 {
   "kitchen_type": "",
+  "analyzed_page_note": "",
   "walls": [
     {
       "id": "Wall A",
@@ -254,18 +260,20 @@ Use only these cabinet widths:
 If dimensions are unclear, make a conservative assumption and explain it in notes.
 """
 
+        content = [{"type": "input_text", "text": prompt}]
+
+        for img in image_paths:
+            content.append({
+                "type": "input_image",
+                "image_url": f"data:image/png;base64,{encode_image(img)}",
+            })
+
         response = openai_client.responses.create(
             model="gpt-4o-mini",
             input=[
                 {
                     "role": "user",
-                    "content": [
-                        {"type": "input_text", "text": prompt},
-                        {
-                            "type": "input_image",
-                            "image_url": f"data:image/png;base64,{encode_image(image_path)}",
-                        },
-                    ],
+                    "content": content,
                 }
             ],
             temperature=0.2,
