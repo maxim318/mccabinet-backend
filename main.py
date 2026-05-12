@@ -53,99 +53,26 @@ def clean_ai_json(ai_text: str):
     return json.loads(clean_text)
 
 
-def normalize_analysis(analysis: dict):
+def normalize_measurements(analysis: dict):
     if not isinstance(analysis, dict):
         return {
-            "kitchen_type": "unknown",
-            "walls": [],
-            "appliances": [],
-            "notes": "AI returned invalid structure"
+            "page_used": "",
+            "detected_dimensions": [],
+            "detected_appliances": [],
+            "detected_openings": [],
+            "layout_type": "",
+            "uncertain_items": ["AI returned invalid structure"],
+            "questions_for_client": ["Please confirm kitchen dimensions manually."]
         }
 
-    walls = analysis.get("walls", [])
-    appliances = analysis.get("appliances", [])
-    cabinets = analysis.get("cabinets", [])
-
-    normalized_walls = []
-
-    for index, wall in enumerate(walls):
-        if not isinstance(wall, dict):
-            continue
-
-        wall_id = wall.get("id") or wall.get("name") or f"Wall {chr(65 + index)}"
-        length_inches = (
-            wall.get("length_inches")
-            or wall.get("length")
-            or wall.get("width")
-            or 120
-        )
-
-        wall_cabinets = wall.get("cabinets")
-
-        if not isinstance(wall_cabinets, list):
-            wall_cabinets = []
-
-        normalized_walls.append({
-            "id": wall_id,
-            "length_inches": length_inches,
-            "description": wall.get("description", ""),
-            "features": wall.get("features", []),
-            "cabinets": wall_cabinets,
-        })
-
-    if not normalized_walls:
-        normalized_walls = [
-            {
-                "id": "Wall A",
-                "length_inches": 120,
-                "description": "Fallback wall because AI did not detect walls",
-                "features": [],
-                "cabinets": [],
-            }
-        ]
-
-    if cabinets and not any(wall.get("cabinets") for wall in normalized_walls):
-        normalized_walls[0]["cabinets"] = [
-            {
-                "type": cabinet.get("type", "base") if isinstance(cabinet, dict) else "base",
-                "width": (
-                    cabinet.get("width")
-                    or cabinet.get("dimensions", {}).get("width")
-                    or 30
-                ) if isinstance(cabinet, dict) else 30,
-                "position_note": cabinet.get("location", "auto placed") if isinstance(cabinet, dict) else "auto placed",
-                "adjacent_to_appliance": False,
-            }
-            for cabinet in cabinets
-            if isinstance(cabinet, dict)
-        ]
-
-    for wall in normalized_walls:
-        if not wall["cabinets"]:
-            wall["cabinets"] = [
-                {
-                    "type": "base",
-                    "width": 30,
-                    "position_note": "placeholder cabinet - client should confirm layout",
-                    "adjacent_to_appliance": False,
-                }
-            ]
-
-    normalized_appliances = []
-
-    for appliance in appliances:
-        if isinstance(appliance, dict):
-            normalized_appliances.append({
-                "type": appliance.get("type", "unknown"),
-                "estimated_width": appliance.get("estimated_width") or appliance.get("width") or 30,
-                "wall_id": appliance.get("wall_id") or appliance.get("location") or "Wall A",
-            })
-
     return {
-        "kitchen_type": analysis.get("kitchen_type", "unknown"),
-        "walls": normalized_walls,
-        "appliances": normalized_appliances,
-        "notes": analysis.get("notes", ""),
+        "page_used": analysis.get("page_used", ""),
+        "detected_dimensions": analysis.get("detected_dimensions", []),
+        "detected_appliances": analysis.get("detected_appliances", []),
+        "detected_openings": analysis.get("detected_openings", []),
+        "layout_type": analysis.get("layout_type", ""),
+        "uncertain_items": analysis.get("uncertain_items", []),
+        "questions_for_client": analysis.get("questions_for_client", []),
         "raw_ai_output": analysis,
     }
 
@@ -179,7 +106,7 @@ class AnalyzeRequest(BaseModel):
 @app.post("/analyze-plan")
 async def analyze_plan(request: AnalyzeRequest):
     try:
-        print("STEP 1 — analyze-plan called")
+        print("STEP 1 — measurement extraction called")
 
         if supabase is None:
             return {"status": "error", "message": "Supabase not configured"}
@@ -208,56 +135,61 @@ async def analyze_plan(request: AnalyzeRequest):
             image_paths.append(image_path)
 
         print("PDF pages sent to AI:", image_paths)
-        print("Calling OpenAI Vision...")
+        print("Calling OpenAI Vision for measurements...")
 
         prompt = """
-You are a kitchen cabinet layout assistant.
+You are reading architectural kitchen floor plan pages.
 
-Analyze these PDF pages and identify the page that most likely contains the kitchen/floor plan.
-Then return ONLY valid JSON.
+Your FIRST job is to extract visible measurements and plan details.
+Do NOT guess cabinet layout yet.
 
+Return ONLY valid JSON.
 Do not use markdown.
-Do not wrap the response in ```json.
-Do not include explanations outside JSON.
-
-IMPORTANT:
-Each wall MUST include a cabinets array.
-The frontend requires walls[].cabinets.
+Do not wrap in ```json.
+Do not include explanation outside JSON.
 
 Return this exact schema:
+
 {
-  "kitchen_type": "",
-  "analyzed_page_note": "",
-  "walls": [
+  "page_used": "",
+  "detected_dimensions": [
     {
-      "id": "Wall A",
-      "length_inches": 120,
-      "description": "",
-      "features": [],
-      "cabinets": [
-        {
-          "type": "base",
-          "width": 30,
-          "position_note": "",
-          "adjacent_to_appliance": false
-        }
-      ]
+      "label": "",
+      "value": "",
+      "location": "",
+      "confidence": "high | medium | low"
     }
   ],
-  "appliances": [
+  "detected_appliances": [
     {
-      "type": "sink",
-      "estimated_width": 30,
-      "wall_id": "Wall A"
+      "type": "",
+      "location": "",
+      "confidence": "high | medium | low"
     }
   ],
-  "notes": ""
+  "detected_openings": [
+    {
+      "type": "door | window | opening",
+      "location": "",
+      "size": "",
+      "confidence": "high | medium | low"
+    }
+  ],
+  "layout_type": "",
+  "uncertain_items": [
+    ""
+  ],
+  "questions_for_client": [
+    ""
+  ]
 }
 
-Use only these cabinet widths:
-9, 12, 15, 18, 21, 24, 27, 30, 33, 36.
-
-If dimensions are unclear, make a conservative assumption and explain it in notes.
+Rules:
+- Only list dimensions you can actually see or reasonably read from the plan.
+- If a dimension is unclear, mark confidence as low.
+- Do NOT invent 90, 96, 120, or other standard wall sizes unless visible.
+- Do NOT create cabinet layout yet.
+- If no usable kitchen dimensions are visible, say that in uncertain_items and questions_for_client.
 """
 
         content = [{"type": "input_text", "text": prompt}]
@@ -276,7 +208,7 @@ If dimensions are unclear, make a conservative assumption and explain it in note
                     "content": content,
                 }
             ],
-            temperature=0.2,
+            temperature=0.1,
         )
 
         ai_text = response.output[0].content[0].text
@@ -284,13 +216,17 @@ If dimensions are unclear, make a conservative assumption and explain it in note
         print("AI RAW OUTPUT:")
         print(ai_text)
 
-        analysis_raw = clean_ai_json(ai_text)
-        analysis = normalize_analysis(analysis_raw)
+        measurement_raw = clean_ai_json(ai_text)
+        measurement_analysis = normalize_measurements(measurement_raw)
 
-        print("NORMALIZED ANALYSIS:")
-        print(json.dumps(analysis, indent=2))
+        print("NORMALIZED MEASUREMENT ANALYSIS:")
+        print(json.dumps(measurement_analysis, indent=2))
 
-        return {"status": "success", "analysis": analysis}
+        return {
+            "status": "success",
+            "measurement_extraction": measurement_analysis,
+            "analysis": measurement_analysis
+        }
 
     except Exception as e:
         print("ERROR IN ANALYZE:", str(e))
