@@ -77,6 +77,46 @@ def normalize_measurements(analysis: dict):
     }
 
 
+def normalize_cabinet_layout(layout: dict):
+    if not isinstance(layout, dict):
+        return {
+            "layout_status": "needs_review",
+            "walls": [],
+            "appliances": [],
+            "questions_for_client": ["Cabinet layout could not be generated."]
+        }
+
+    walls = layout.get("walls", [])
+
+    normalized_walls = []
+    for index, wall in enumerate(walls):
+        if not isinstance(wall, dict):
+            continue
+
+        cabinets = wall.get("cabinets", [])
+        if not isinstance(cabinets, list):
+            cabinets = []
+
+        normalized_walls.append({
+            "id": wall.get("id") or f"Wall {chr(65 + index)}",
+            "length_inches": wall.get("length_inches") or wall.get("length") or 0,
+            "description": wall.get("description", ""),
+            "cabinets": cabinets,
+            "notes": wall.get("notes", "")
+        })
+
+    return {
+        "layout_status": layout.get("layout_status", "draft_needs_client_confirmation"),
+        "kitchen_type": layout.get("kitchen_type", ""),
+        "walls": normalized_walls,
+        "appliances": layout.get("appliances", []),
+        "fillers": layout.get("fillers", []),
+        "assumptions": layout.get("assumptions", []),
+        "questions_for_client": layout.get("questions_for_client", []),
+        "raw_ai_output": layout,
+    }
+
+
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
     try:
@@ -137,7 +177,7 @@ async def analyze_plan(request: AnalyzeRequest):
         print("PDF pages sent to AI:", image_paths)
         print("Calling OpenAI Vision for measurements...")
 
-        prompt = """
+        measurement_prompt = """
 You are reading architectural kitchen floor plan pages.
 
 Your FIRST job is to extract visible measurements and plan details.
@@ -192,40 +232,138 @@ Rules:
 - If no usable kitchen dimensions are visible, say that in uncertain_items and questions_for_client.
 """
 
-        content = [{"type": "input_text", "text": prompt}]
+        measurement_content = [{"type": "input_text", "text": measurement_prompt}]
 
         for img in image_paths:
-            content.append({
+            measurement_content.append({
                 "type": "input_image",
                 "image_url": f"data:image/png;base64,{encode_image(img)}",
             })
 
-        response = openai_client.responses.create(
+        measurement_response = openai_client.responses.create(
             model="gpt-4o-mini",
             input=[
                 {
                     "role": "user",
-                    "content": content,
+                    "content": measurement_content,
                 }
             ],
             temperature=0.1,
         )
 
-        ai_text = response.output[0].content[0].text
+        measurement_text = measurement_response.output[0].content[0].text
 
-        print("AI RAW OUTPUT:")
-        print(ai_text)
+        print("MEASUREMENT AI RAW OUTPUT:")
+        print(measurement_text)
 
-        measurement_raw = clean_ai_json(ai_text)
+        measurement_raw = clean_ai_json(measurement_text)
         measurement_analysis = normalize_measurements(measurement_raw)
 
         print("NORMALIZED MEASUREMENT ANALYSIS:")
         print(json.dumps(measurement_analysis, indent=2))
 
+        print("STEP 2 — cabinet layout generation called")
+
+        layout_prompt = f"""
+You are a professional cabinet layout assistant.
+
+Using ONLY the extracted measurement data below, generate a draft cabinet layout.
+Do not invent exact wall dimensions unless they are listed in the measurement data.
+If required information is missing, create a conservative draft and mark it clearly as needing client confirmation.
+
+Measurement data:
+{json.dumps(measurement_analysis, indent=2)}
+
+Return ONLY valid JSON.
+Do not use markdown.
+Do not wrap in ```json.
+Do not include explanation outside JSON.
+
+Use only these cabinet widths:
+9, 12, 15, 18, 21, 24, 27, 30, 33, 36.
+
+Return this exact schema:
+
+{{
+  "layout_status": "draft_needs_client_confirmation",
+  "kitchen_type": "",
+  "walls": [
+    {{
+      "id": "Wall A",
+      "length_inches": 0,
+      "description": "",
+      "cabinets": [
+        {{
+          "type": "base | wall | tall | sink_base | drawer_base | filler | corner",
+          "width": 30,
+          "position_note": "",
+          "adjacent_to_appliance": false
+        }}
+      ],
+      "notes": ""
+    }}
+  ],
+  "appliances": [
+    {{
+      "type": "",
+      "estimated_width": 30,
+      "wall_id": "",
+      "location_note": ""
+    }}
+  ],
+  "fillers": [
+    {{
+      "wall_id": "",
+      "width": 3,
+      "reason": ""
+    }}
+  ],
+  "assumptions": [
+    ""
+  ],
+  "questions_for_client": [
+    ""
+  ]
+}}
+
+Rules:
+- This is NOT pricing.
+- This is a draft layout only.
+- Base/wall cabinet widths must be standard 3-inch increments from 9 to 36 inches.
+- Respect doors, windows, openings, appliances, and uncertain dimensions.
+- If a wall length is not clearly extracted, set length_inches to 0 and ask the client to confirm.
+- Do not claim final accuracy unless dimensions are high confidence.
+"""
+
+        layout_response = openai_client.responses.create(
+            model="gpt-4o-mini",
+            input=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": layout_prompt}
+                    ],
+                }
+            ],
+            temperature=0.1,
+        )
+
+        layout_text = layout_response.output[0].content[0].text
+
+        print("LAYOUT AI RAW OUTPUT:")
+        print(layout_text)
+
+        layout_raw = clean_ai_json(layout_text)
+        cabinet_layout = normalize_cabinet_layout(layout_raw)
+
+        print("NORMALIZED CABINET LAYOUT:")
+        print(json.dumps(cabinet_layout, indent=2))
+
         return {
             "status": "success",
             "measurement_extraction": measurement_analysis,
-            "analysis": measurement_analysis
+            "cabinet_layout": cabinet_layout,
+            "analysis": cabinet_layout
         }
 
     except Exception as e:
