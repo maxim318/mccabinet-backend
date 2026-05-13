@@ -87,8 +87,8 @@ def normalize_cabinet_layout(layout: dict):
         }
 
     walls = layout.get("walls", [])
-
     normalized_walls = []
+
     for index, wall in enumerate(walls):
         if not isinstance(wall, dict):
             continue
@@ -97,11 +97,37 @@ def normalize_cabinet_layout(layout: dict):
         if not isinstance(cabinets, list):
             cabinets = []
 
+        normalized_cabinets = []
+        running_x = 0
+
+        for cabinet in cabinets:
+            if not isinstance(cabinet, dict):
+                continue
+
+            width = cabinet.get("width") or 30
+
+            normalized_cabinets.append({
+                "type": cabinet.get("type", "base"),
+                "width": width,
+                "depth": cabinet.get("depth") or 24,
+                "x": cabinet.get("x", running_x),
+                "y": cabinet.get("y", 0),
+                "rotation": cabinet.get("rotation", 0),
+                "position_note": cabinet.get("position_note", ""),
+                "adjacent_to_appliance": cabinet.get("adjacent_to_appliance", False),
+            })
+
+            running_x += width
+
         normalized_walls.append({
             "id": wall.get("id") or f"Wall {chr(65 + index)}",
             "length_inches": wall.get("length_inches") or wall.get("length") or 0,
+            "x1": wall.get("x1", 0),
+            "y1": wall.get("y1", 0),
+            "x2": wall.get("x2", wall.get("length_inches") or wall.get("length") or 0),
+            "y2": wall.get("y2", 0),
             "description": wall.get("description", ""),
-            "cabinets": cabinets,
+            "cabinets": normalized_cabinets,
             "notes": wall.get("notes", "")
         })
 
@@ -121,7 +147,7 @@ def generate_layout_from_data(data: dict):
     layout_prompt = f"""
 You are a professional cabinet layout assistant.
 
-Using ONLY the confirmed measurement data below, generate a cabinet layout.
+Using ONLY the confirmed measurement data below, generate a cabinet layout with real top-down coordinates.
 Do not invent exact wall dimensions unless they are listed in the confirmed data.
 If required information is missing, create a conservative draft and mark it clearly as needing client confirmation.
 
@@ -136,6 +162,16 @@ Do not include explanation outside JSON.
 Use only these cabinet widths:
 9, 12, 15, 18, 21, 24, 27, 30, 33, 36.
 
+Coordinate rules:
+- Use inches as the coordinate unit.
+- x and y are top-down plan coordinates.
+- rotation is degrees: 0, 90, 180, or 270.
+- Base cabinets usually have depth 24.
+- Wall cabinets usually have depth 12.
+- Tall cabinets usually have depth 24.
+- Put cabinets along their related wall.
+- If exact placement is uncertain, still provide x/y but explain the assumption.
+
 Return this exact schema:
 
 {{
@@ -145,11 +181,19 @@ Return this exact schema:
     {{
       "id": "Wall A",
       "length_inches": 0,
+      "x1": 0,
+      "y1": 0,
+      "x2": 0,
+      "y2": 0,
       "description": "",
       "cabinets": [
         {{
           "type": "base | wall | tall | sink_base | drawer_base | filler | corner",
           "width": 30,
+          "depth": 24,
+          "x": 0,
+          "y": 0,
+          "rotation": 0,
           "position_note": "",
           "adjacent_to_appliance": false
         }}
@@ -161,6 +205,10 @@ Return this exact schema:
     {{
       "type": "",
       "estimated_width": 30,
+      "depth": 24,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
       "wall_id": "",
       "location_note": ""
     }}
@@ -169,6 +217,9 @@ Return this exact schema:
     {{
       "wall_id": "",
       "width": 3,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
       "reason": ""
     }}
   ],
@@ -183,7 +234,7 @@ Return this exact schema:
 Rules:
 - This is NOT pricing.
 - This is a draft layout only.
-- Base/wall cabinet widths must be standard 3-inch increments from 9 to 36 inches.
+- Cabinet widths must be standard 3-inch increments from 9 to 36 inches.
 - Respect doors, windows, openings, appliances, and uncertain dimensions.
 - If a wall length is not clearly extracted, set length_inches to 0 and ask the client to confirm.
 - Do not claim final accuracy unless dimensions are high confidence.
@@ -364,7 +415,7 @@ Rules:
         print("NORMALIZED MEASUREMENT ANALYSIS:")
         print(json.dumps(measurement_analysis, indent=2))
 
-        print("STEP 2 — cabinet layout generation called")
+        print("STEP 2 — coordinate cabinet layout generation called")
 
         cabinet_layout = generate_layout_from_data(measurement_analysis)
 
@@ -386,7 +437,7 @@ Rules:
 @app.post("/generate-layout")
 async def generate_layout(request: GenerateLayoutRequest):
     try:
-        print("GENERATE LAYOUT FROM CONFIRMED DIMENSIONS CALLED")
+        print("GENERATE COORDINATE LAYOUT FROM CONFIRMED DIMENSIONS CALLED")
 
         confirmed_data = {
             "confirmed_dimensions": request.confirmed_dimensions,
