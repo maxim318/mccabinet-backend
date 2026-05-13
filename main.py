@@ -117,6 +117,100 @@ def normalize_cabinet_layout(layout: dict):
     }
 
 
+def generate_layout_from_data(data: dict):
+    layout_prompt = f"""
+You are a professional cabinet layout assistant.
+
+Using ONLY the confirmed measurement data below, generate a cabinet layout.
+Do not invent exact wall dimensions unless they are listed in the confirmed data.
+If required information is missing, create a conservative draft and mark it clearly as needing client confirmation.
+
+Confirmed data:
+{json.dumps(data, indent=2)}
+
+Return ONLY valid JSON.
+Do not use markdown.
+Do not wrap in ```json.
+Do not include explanation outside JSON.
+
+Use only these cabinet widths:
+9, 12, 15, 18, 21, 24, 27, 30, 33, 36.
+
+Return this exact schema:
+
+{{
+  "layout_status": "draft_needs_client_confirmation",
+  "kitchen_type": "",
+  "walls": [
+    {{
+      "id": "Wall A",
+      "length_inches": 0,
+      "description": "",
+      "cabinets": [
+        {{
+          "type": "base | wall | tall | sink_base | drawer_base | filler | corner",
+          "width": 30,
+          "position_note": "",
+          "adjacent_to_appliance": false
+        }}
+      ],
+      "notes": ""
+    }}
+  ],
+  "appliances": [
+    {{
+      "type": "",
+      "estimated_width": 30,
+      "wall_id": "",
+      "location_note": ""
+    }}
+  ],
+  "fillers": [
+    {{
+      "wall_id": "",
+      "width": 3,
+      "reason": ""
+    }}
+  ],
+  "assumptions": [
+    ""
+  ],
+  "questions_for_client": [
+    ""
+  ]
+}}
+
+Rules:
+- This is NOT pricing.
+- This is a draft layout only.
+- Base/wall cabinet widths must be standard 3-inch increments from 9 to 36 inches.
+- Respect doors, windows, openings, appliances, and uncertain dimensions.
+- If a wall length is not clearly extracted, set length_inches to 0 and ask the client to confirm.
+- Do not claim final accuracy unless dimensions are high confidence.
+"""
+
+    layout_response = openai_client.responses.create(
+        model="gpt-4o-mini",
+        input=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": layout_prompt}
+                ],
+            }
+        ],
+        temperature=0.1,
+    )
+
+    layout_text = layout_response.output[0].content[0].text
+
+    print("LAYOUT AI RAW OUTPUT:")
+    print(layout_text)
+
+    layout_raw = clean_ai_json(layout_text)
+    return normalize_cabinet_layout(layout_raw)
+
+
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
     try:
@@ -141,6 +235,14 @@ async def upload(file: UploadFile = File(...)):
 
 class AnalyzeRequest(BaseModel):
     path: str
+
+
+class GenerateLayoutRequest(BaseModel):
+    confirmed_dimensions: list = []
+    detected_appliances: list = []
+    detected_openings: list = []
+    layout_type: str = ""
+    notes: str = ""
 
 
 @app.post("/analyze-plan")
@@ -264,97 +366,7 @@ Rules:
 
         print("STEP 2 — cabinet layout generation called")
 
-        layout_prompt = f"""
-You are a professional cabinet layout assistant.
-
-Using ONLY the extracted measurement data below, generate a draft cabinet layout.
-Do not invent exact wall dimensions unless they are listed in the measurement data.
-If required information is missing, create a conservative draft and mark it clearly as needing client confirmation.
-
-Measurement data:
-{json.dumps(measurement_analysis, indent=2)}
-
-Return ONLY valid JSON.
-Do not use markdown.
-Do not wrap in ```json.
-Do not include explanation outside JSON.
-
-Use only these cabinet widths:
-9, 12, 15, 18, 21, 24, 27, 30, 33, 36.
-
-Return this exact schema:
-
-{{
-  "layout_status": "draft_needs_client_confirmation",
-  "kitchen_type": "",
-  "walls": [
-    {{
-      "id": "Wall A",
-      "length_inches": 0,
-      "description": "",
-      "cabinets": [
-        {{
-          "type": "base | wall | tall | sink_base | drawer_base | filler | corner",
-          "width": 30,
-          "position_note": "",
-          "adjacent_to_appliance": false
-        }}
-      ],
-      "notes": ""
-    }}
-  ],
-  "appliances": [
-    {{
-      "type": "",
-      "estimated_width": 30,
-      "wall_id": "",
-      "location_note": ""
-    }}
-  ],
-  "fillers": [
-    {{
-      "wall_id": "",
-      "width": 3,
-      "reason": ""
-    }}
-  ],
-  "assumptions": [
-    ""
-  ],
-  "questions_for_client": [
-    ""
-  ]
-}}
-
-Rules:
-- This is NOT pricing.
-- This is a draft layout only.
-- Base/wall cabinet widths must be standard 3-inch increments from 9 to 36 inches.
-- Respect doors, windows, openings, appliances, and uncertain dimensions.
-- If a wall length is not clearly extracted, set length_inches to 0 and ask the client to confirm.
-- Do not claim final accuracy unless dimensions are high confidence.
-"""
-
-        layout_response = openai_client.responses.create(
-            model="gpt-4o-mini",
-            input=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "input_text", "text": layout_prompt}
-                    ],
-                }
-            ],
-            temperature=0.1,
-        )
-
-        layout_text = layout_response.output[0].content[0].text
-
-        print("LAYOUT AI RAW OUTPUT:")
-        print(layout_text)
-
-        layout_raw = clean_ai_json(layout_text)
-        cabinet_layout = normalize_cabinet_layout(layout_raw)
+        cabinet_layout = generate_layout_from_data(measurement_analysis)
 
         print("NORMALIZED CABINET LAYOUT:")
         print(json.dumps(cabinet_layout, indent=2))
@@ -368,4 +380,30 @@ Rules:
 
     except Exception as e:
         print("ERROR IN ANALYZE:", str(e))
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/generate-layout")
+async def generate_layout(request: GenerateLayoutRequest):
+    try:
+        print("GENERATE LAYOUT FROM CONFIRMED DIMENSIONS CALLED")
+
+        confirmed_data = {
+            "confirmed_dimensions": request.confirmed_dimensions,
+            "detected_appliances": request.detected_appliances,
+            "detected_openings": request.detected_openings,
+            "layout_type": request.layout_type,
+            "notes": request.notes,
+        }
+
+        cabinet_layout = generate_layout_from_data(confirmed_data)
+
+        return {
+            "status": "success",
+            "cabinet_layout": cabinet_layout,
+            "analysis": cabinet_layout
+        }
+
+    except Exception as e:
+        print("ERROR IN GENERATE LAYOUT:", str(e))
         return {"status": "error", "message": str(e)}
