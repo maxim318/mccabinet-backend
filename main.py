@@ -181,6 +181,25 @@ Scale handling:
 Confirmed data:
 {json.dumps(data, indent=2)}
 
+VERY IMPORTANT APPLIANCE AND OPENING RULES:
+- Confirmed appliances are fixed planning objects.
+- Do NOT place cabinets over confirmed appliances.
+- Reserve realistic space for each appliance.
+- Typical widths if not provided:
+  - refrigerator: 36 inches
+  - range/stove/cooktop: 30 inches
+  - dishwasher: 24 inches
+  - sink: 30 to 36 inches
+  - microwave: 30 inches if built-in, otherwise mark as uncertain
+  - wall oven: 30 inches
+- If an appliance location is vague, place it conservatively and add a question for the client.
+- Confirmed openings are blocked zones.
+- Do NOT place base/tall cabinets across doors, windows, walkways, or openings.
+- Windows may allow base cabinets below them, but do NOT place wall cabinets over windows.
+- Doors and walkways should remain clear.
+- If an opening location is vague, mark the affected wall as needing confirmation.
+- Appliance and opening conflicts should be listed in assumptions or questions_for_client.
+
 Return ONLY valid JSON.
 Do not use markdown.
 Do not wrap in ```json.
@@ -198,6 +217,10 @@ Coordinate rules:
 - Tall cabinets usually have depth 24.
 - Put cabinets along their related wall.
 - If exact placement is uncertain, still provide x/y but explain the assumption.
+- Use the same x/y coordinate system for walls, cabinets, appliances, fillers, and openings.
+- Keep cabinets aligned with walls.
+- Do not overlap cabinets with appliances.
+- Do not overlap cabinets with blocked openings.
 
 Return this exact schema:
 
@@ -233,6 +256,17 @@ Return this exact schema:
       "type": "",
       "estimated_width": 30,
       "depth": 24,
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "wall_id": "",
+      "location_note": ""
+    }}
+  ],
+  "openings": [
+    {{
+      "type": "door | window | opening",
+      "estimated_width": 30,
       "x": 0,
       "y": 0,
       "rotation": 0,
