@@ -57,6 +57,11 @@ def normalize_measurements(analysis: dict):
     if not isinstance(analysis, dict):
         return {
             "page_used": "",
+            "input_type": "unknown",
+            "scale_detected": False,
+            "scale_value": "",
+            "can_generate_layout": False,
+            "layout_generation_reason": "AI returned invalid structure",
             "detected_dimensions": [],
             "detected_appliances": [],
             "detected_openings": [],
@@ -65,9 +70,20 @@ def normalize_measurements(analysis: dict):
             "questions_for_client": ["Please confirm kitchen dimensions manually."]
         }
 
+    detected_dimensions = analysis.get("detected_dimensions", [])
+    can_generate_layout = analysis.get("can_generate_layout", False)
+
+    if not can_generate_layout and isinstance(detected_dimensions, list) and len(detected_dimensions) > 0:
+        can_generate_layout = True
+
     return {
         "page_used": analysis.get("page_used", ""),
-        "detected_dimensions": analysis.get("detected_dimensions", []),
+        "input_type": analysis.get("input_type", "unknown"),
+        "scale_detected": analysis.get("scale_detected", False),
+        "scale_value": analysis.get("scale_value", ""),
+        "can_generate_layout": can_generate_layout,
+        "layout_generation_reason": analysis.get("layout_generation_reason", ""),
+        "detected_dimensions": detected_dimensions,
         "detected_appliances": analysis.get("detected_appliances", []),
         "detected_openings": analysis.get("detected_openings", []),
         "layout_type": analysis.get("layout_type", ""),
@@ -148,8 +164,17 @@ def generate_layout_from_data(data: dict):
 You are a professional cabinet layout assistant.
 
 Using ONLY the confirmed measurement data below, generate a cabinet layout with real top-down coordinates.
-Do not invent exact wall dimensions unless they are listed in the confirmed data.
-If required information is missing, create a conservative draft and mark it clearly as needing client confirmation.
+
+This software must support BOTH:
+- scaled architectural plans
+- unscaled PDFs
+- hand-drawn dimensioned sketches
+- screenshots/exports from other design software
+
+Do not require scale.
+If scale is available, use it as supporting information.
+If scale is not available, use the visible written dimensions.
+If dimensions are missing or unclear, create a draft but mark it as needing client confirmation.
 
 Confirmed data:
 {json.dumps(data, indent=2)}
@@ -331,10 +356,22 @@ async def analyze_plan(request: AnalyzeRequest):
         print("Calling OpenAI Vision for measurements...")
 
         measurement_prompt = """
-You are reading architectural kitchen floor plan pages.
+You are reading kitchen plan pages.
 
-Your FIRST job is to extract visible measurements and plan details.
+Your FIRST job is to classify the uploaded plan and extract usable measurements.
 Do NOT guess cabinet layout yet.
+
+The uploaded file can be any of these:
+- scaled architectural PDF
+- unscaled architectural PDF
+- hand-drawn dimensioned sketch
+- screenshot/export from other design software
+- unknown plan type
+
+Scale is helpful but NOT mandatory.
+If a scale is visible, extract it.
+If no scale is visible, use written dimensions visible on the plan.
+If neither scale nor dimensions are visible, ask the client to enter key wall dimensions.
 
 Return ONLY valid JSON.
 Do not use markdown.
@@ -345,6 +382,11 @@ Return this exact schema:
 
 {
   "page_used": "",
+  "input_type": "scaled_architectural_plan | unscaled_architectural_plan | hand_drawn_dimensioned_sketch | software_export | unknown",
+  "scale_detected": false,
+  "scale_value": "",
+  "can_generate_layout": false,
+  "layout_generation_reason": "",
   "detected_dimensions": [
     {
       "label": "",
@@ -378,11 +420,17 @@ Return this exact schema:
 }
 
 Rules:
+- Detect whether there is a visible scale.
+- If scale exists, set scale_detected true and fill scale_value.
+- If scale does not exist, set scale_detected false.
+- Do NOT require scale.
 - Only list dimensions you can actually see or reasonably read from the plan.
 - If a dimension is unclear, mark confidence as low.
 - Do NOT invent 90, 96, 120, or other standard wall sizes unless visible.
 - Do NOT create cabinet layout yet.
-- If no usable kitchen dimensions are visible, say that in uncertain_items and questions_for_client.
+- Set can_generate_layout true if there are enough visible dimensions or client-confirmable measurements to create a draft.
+- Set can_generate_layout false if there are no usable dimensions.
+- If no usable kitchen dimensions are visible, explain that in uncertain_items and questions_for_client.
 """
 
         measurement_content = [{"type": "input_text", "text": measurement_prompt}]
