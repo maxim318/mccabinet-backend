@@ -171,10 +171,12 @@ This software must support BOTH:
 - hand-drawn dimensioned sketches
 - screenshots/exports from other design software
 
-Do not require scale.
-If scale is available, use it as supporting information.
-If scale is not available, use the visible written dimensions.
-If dimensions are missing or unclear, create a draft but mark it as needing client confirmation.
+Scale handling:
+- If use_scale is true and scale_value is provided, use the scale as supporting information.
+- If use_scale is false, ignore the detected scale and use only confirmed written dimensions.
+- If no scale is available, use the visible or confirmed dimensions.
+- Do not require scale.
+- If dimensions are missing or unclear, create a draft but mark it as needing client confirmation.
 
 Confirmed data:
 {json.dumps(data, indent=2)}
@@ -319,6 +321,9 @@ class GenerateLayoutRequest(BaseModel):
     detected_openings: list = []
     layout_type: str = ""
     notes: str = ""
+    use_scale: bool = True
+    scale_value: str = ""
+    input_type: str = ""
 
 
 @app.post("/analyze-plan")
@@ -493,6 +498,9 @@ async def generate_layout(request: GenerateLayoutRequest):
             "detected_openings": request.detected_openings,
             "layout_type": request.layout_type,
             "notes": request.notes,
+            "use_scale": request.use_scale,
+            "scale_value": request.scale_value,
+            "input_type": request.input_type,
         }
 
         cabinet_layout = generate_layout_from_data(confirmed_data)
